@@ -17,36 +17,33 @@ test_routes_to_anthropic_provider() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock Anthropic query function
     _zsh_ai_query_anthropic() {
         echo "anthropic:$1"
     }
-    
+
     local output
     output=$(_zsh_ai_query "test query")
     assert_equals "$output" "anthropic:test query"
-    
+
     teardown_test_env
 }
 
 test_routes_to_ollama_provider() {
     setup_test_env
     export ZSH_AI_PROVIDER="ollama"
-    
+
     # Mock Ollama check and query functions
-    _zsh_ai_check_ollama() {
-        return 0
-    }
-    
+    mock_command "curl" "success" 0
     _zsh_ai_query_ollama() {
         echo "ollama:$1"
     }
-    
+
     local output
     output=$(_zsh_ai_query "test query")
     assert_equals "$output" "ollama:test query"
-    
+
     teardown_test_env
 }
 
@@ -54,21 +51,19 @@ test_checks_ollama_availability_before_querying() {
     setup_test_env
     export ZSH_AI_PROVIDER="ollama"
     export ZSH_AI_OLLAMA_URL="http://localhost:11434"
-    
+
     # Mock Ollama check to fail
-    _zsh_ai_check_ollama() {
-        return 1
-    }
-    
+    mock_command "curl" "foo" 1
+
     local output
     output=$(_zsh_ai_query "test query")
     local result=$?
-    
+
     assert_equals "$result" "1"
     assert_contains "$output" "Ollama is not running"
     assert_contains "$output" "http://localhost:11434"
     assert_contains "$output" "ollama serve"
-    
+
     teardown_test_env
 }
 
@@ -76,17 +71,17 @@ test_checks_ollama_availability_before_querying() {
 test_shows_usage_without_arguments() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
-    
+
     # Capture output through a subshell
     local output
     output=$(zsh-ai)
     local result=$?
-    
+
     assert_equals "$result" "1"
     assert_contains "$output" "Usage: zsh-ai"
     assert_contains "$output" "Example:"
     assert_contains "$output" "Current provider: anthropic"
-    
+
     teardown_test_env
 }
 
@@ -94,16 +89,16 @@ test_shows_ollama_model_in_usage() {
     setup_test_env
     export ZSH_AI_PROVIDER="ollama"
     export ZSH_AI_OLLAMA_MODEL="llama3.2"
-    
+
     # Capture output through a subshell
     local output
     output=$(zsh-ai)
     local result=$?
-    
+
     assert_equals "$result" "1"
     assert_contains "$output" "Current provider: ollama"
-    assert_contains "$output" "Ollama model: llama3.2"
-    
+    assert_contains "$output" "Ollama model    : llama3.2"
+
     teardown_test_env
 }
 
@@ -111,18 +106,18 @@ test_shows_command_without_executing() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function
     _zsh_ai_query() {
         echo "echo 'Hello World'"
     }
-    
+
     # Track eval execution - should NOT be called
     local eval_called=0
     eval() {
         eval_called=1
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -132,13 +127,13 @@ test_shows_command_without_executing() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai "say hello" >/dev/null 2>&1
-    
+
     # Should put command in buffer but NOT execute it
     assert_equals "$eval_called" "0"
     assert_equals "$buffer_cmd" "echo 'Hello World'"
-    
+
     teardown_test_env
 }
 
@@ -146,12 +141,12 @@ test_puts_command_in_buffer() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function
     _zsh_ai_query() {
         echo "ls -la"
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -161,12 +156,12 @@ test_puts_command_in_buffer() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai "list files" >/dev/null 2>&1
-    
+
     # Should put command in buffer
     assert_equals "$buffer_cmd" "ls -la"
-    
+
     teardown_test_env
 }
 
@@ -174,21 +169,22 @@ test_handles_api_errors_in_zsh_ai() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function to return error
     _zsh_ai_query() {
         echo "Error: API connection failed"
+        return 1
     }
-    
+
     # Capture output with stderr
     local output
     output=$(zsh-ai "test query" 2>&1)
     local result=$?
-    
+
     assert_equals "$result" "1"
     assert_contains "$output" "Failed to generate command"
     assert_contains "$output" "API connection failed"
-    
+
     teardown_test_env
 }
 
@@ -196,20 +192,20 @@ test_handles_empty_response_in_zsh_ai() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function to return empty
     _zsh_ai_query() {
         echo ""
     }
-    
+
     # Capture output with stderr
     local output
     output=$(zsh-ai "test query" 2>&1)
     local result=$?
-    
+
     assert_equals "$result" "1"
     assert_contains "$output" "Failed to generate command"
-    
+
     teardown_test_env
 }
 
@@ -217,12 +213,12 @@ test_combines_multiple_arguments() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock execute command function
-    _zsh_ai_execute_command() {
+    _zsh_ai_query() {
         echo "find . -name '*.py'"
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -232,12 +228,12 @@ test_combines_multiple_arguments() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai find all python files >/dev/null 2>&1
-    
+
     # Should put command in buffer
     assert_equals "$buffer_cmd" "find . -name '*.py'"
-    
+
     teardown_test_env
 }
 
@@ -245,12 +241,12 @@ test_puts_generated_command_in_buffer() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function
     _zsh_ai_query() {
         echo "ls -la"
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -260,12 +256,12 @@ test_puts_generated_command_in_buffer() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai "list files" >/dev/null 2>&1
-    
+
     # Should put command in buffer
     assert_equals "$buffer_cmd" "ls -la"
-    
+
     teardown_test_env
 }
 
@@ -273,18 +269,18 @@ test_no_execution_happens() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function
     _zsh_ai_query() {
         echo "pwd"
     }
-    
+
     # Track eval execution - should NOT be called
     local eval_called=0
     eval() {
         eval_called=1
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -294,14 +290,14 @@ test_no_execution_happens() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai "show directory" >/dev/null 2>&1
-    
+
     # Should NOT execute the command
     assert_equals "$eval_called" "0"
     # Should put command in buffer
     assert_equals "$buffer_cmd" "pwd"
-    
+
     teardown_test_env
 }
 
@@ -309,13 +305,13 @@ test_shows_loading_spinner() {
     setup_test_env
     export ZSH_AI_PROVIDER="anthropic"
     export ANTHROPIC_API_KEY="test-key"
-    
+
     # Mock query function with delay to simulate API call
     _zsh_ai_query() {
         sleep 0.3
         echo "ls -la"
     }
-    
+
     # Mock print -z to capture buffer command
     local buffer_cmd=""
     print() {
@@ -325,20 +321,41 @@ test_shows_loading_spinner() {
             builtin print "$@"
         fi
     }
-    
+
     zsh-ai "list files" >/dev/null 2>&1
-    
+
     # Should put command in buffer
     assert_equals "$buffer_cmd" "ls -la"
-    
+
+    teardown_test_env
+}
+
+test_get_system_prompt_with_complex_context() {
+    setup_test_env
+
+    # Mock _zsh_ai_build_context
+    local complex_context=$'Current dir: /home/user\nGit branch: main\nProject: Node.js'
+    _zsh_ai_build_context() {
+        echo "${complex_context}"
+    }
+    local prompt=$(_zsh_ai_get_system_prompt)
+
+    # Check that context is included at the end
+    assert_contains "$prompt" "Context:"
+    assert_contains "$prompt" "$complex_context"
+
     teardown_test_env
 }
 
 test_get_system_prompt_includes_all_rules() {
     setup_test_env
-    
-    local prompt=$(_zsh_ai_get_system_prompt "test context")
-    
+
+    # Mock _zsh_ai_build_context
+    _zsh_ai_build_context() {
+        echo "test context"
+    }
+    local prompt=$(_zsh_ai_get_system_prompt)
+
     # Check that all key parts of the prompt are present
     assert_contains "$prompt" "zsh command generator"
     assert_contains "$prompt" "IMPORTANT RULES"
@@ -351,54 +368,41 @@ test_get_system_prompt_includes_all_rules() {
     assert_contains "$prompt" "echo 'Hello World!'"
     assert_contains "$prompt" "Context:"
     assert_contains "$prompt" "test context"
-    
-    teardown_test_env
-}
 
-test_get_system_prompt_with_complex_context() {
-    setup_test_env
-    
-    local complex_context="Current dir: /home/user\nGit branch: main\nProject: Node.js"
-    local prompt=$(_zsh_ai_get_system_prompt "$complex_context")
-    
-    # Check that context is included at the end
-    assert_contains "$prompt" "Context:"
-    assert_contains "$prompt" "$complex_context"
-    
     teardown_test_env
 }
 
 test_get_system_prompt_with_empty_context() {
     setup_test_env
-    
+
     local prompt=$(_zsh_ai_get_system_prompt "")
-    
+
     # Should still include the Context: header even if empty
-    assert_contains "$prompt" "Context:\n"
-    
+    assert_contains "$prompt" $'Context:\n'
+
     teardown_test_env
 }
 
 test_get_system_prompt_with_extension() {
     setup_test_env
-    
+
     # Set custom prompt extension
     export ZSH_AI_PROMPT_EXTEND="Always prefer modern CLI tools. Use ripgrep instead of grep."
-    
-    local prompt=$(_zsh_ai_get_system_prompt "test context")
-    
+
+    local prompt=$(_zsh_ai_get_system_prompt)
+
     # Check that core prompt is still present
     assert_contains "$prompt" "zsh command generator"
     assert_contains "$prompt" "IMPORTANT RULES"
-    
+
     # Check that extension is included
     assert_contains "$prompt" "Always prefer modern CLI tools"
     assert_contains "$prompt" "Use ripgrep instead of grep"
-    
+
     # Check that context is still at the end
     assert_contains "$prompt" "Context:"
     assert_contains "$prompt" "test context"
-    
+
     # Check proper ordering - extension should be between rules and context
     local prompt_text="$prompt"
     if [[ "$prompt_text" =~ "IMPORTANT RULES.*Always prefer modern CLI tools.*Context:" ]]; then
@@ -408,62 +412,62 @@ test_get_system_prompt_with_extension() {
         echo "Error: Prompt extension not in correct position"
         return 1
     fi
-    
+
     teardown_test_env
 }
 
 test_get_system_prompt_without_extension() {
     setup_test_env
-    
+
     # Ensure no extension is set
     unset ZSH_AI_PROMPT_EXTEND
-    
-    local prompt=$(_zsh_ai_get_system_prompt "test context")
-    
+
+    local prompt=$(_zsh_ai_get_system_prompt)
+
     # Should work exactly as before when no extension is set
     assert_contains "$prompt" "zsh command generator"
     assert_contains "$prompt" "IMPORTANT RULES"
     assert_contains "$prompt" "Context:"
     assert_contains "$prompt" "test context"
-    
+
     # Should not have extra newlines where extension would be
-    local expected_pattern="glob patterns in quotes)\n\nContext:"
+    local expected_pattern=$'glob patterns in quotes)\n\nContext:'
     assert_contains "$prompt" "$expected_pattern"
-    
+
     teardown_test_env
 }
 
 test_get_system_prompt_with_multiline_extension() {
     setup_test_env
-    
+
     # Set multi-line custom prompt extension
     export ZSH_AI_PROMPT_EXTEND="Additional rules:\n1. Prefer fd over find\n2. Use bat instead of cat\n3. Always use exa for ls commands"
-    
-    local prompt=$(_zsh_ai_get_system_prompt "test context")
-    
+
+    local prompt=$(_zsh_ai_get_system_prompt)
+
     # Check that all lines of extension are included
     assert_contains "$prompt" "Additional rules:"
     assert_contains "$prompt" "1. Prefer fd over find"
     assert_contains "$prompt" "2. Use bat instead of cat"
     assert_contains "$prompt" "3. Always use exa for ls commands"
-    
+
     teardown_test_env
 }
 
 test_get_system_prompt_with_empty_extension() {
     setup_test_env
-    
+
     # Set empty extension (should behave same as unset)
     export ZSH_AI_PROMPT_EXTEND=""
-    
-    local prompt=$(_zsh_ai_get_system_prompt "test context")
-    
+
+    local prompt=$(_zsh_ai_get_system_prompt)
+
     # Should work exactly as before when extension is empty
     assert_contains "$prompt" "zsh command generator"
     assert_contains "$prompt" "IMPORTANT RULES"
     assert_contains "$prompt" "Context:"
     assert_contains "$prompt" "test context"
-    
+
     teardown_test_env
 }
 
@@ -482,8 +486,8 @@ test_combines_multiple_arguments && echo "✓ Combines multiple arguments in zsh
 test_puts_generated_command_in_buffer && echo "✓ Puts generated command in buffer"
 test_no_execution_happens && echo "✓ No execution happens"
 test_shows_loading_spinner && echo "✓ Shows loading spinner during command generation"
-test_get_system_prompt_includes_all_rules && echo "✓ System prompt includes all rules"
 test_get_system_prompt_with_complex_context && echo "✓ System prompt handles complex context"
+test_get_system_prompt_includes_all_rules && echo "✓ System prompt includes all rules"
 test_get_system_prompt_with_empty_context && echo "✓ System prompt handles empty context"
 test_get_system_prompt_with_extension && echo "✓ System prompt includes custom extension when set"
 test_get_system_prompt_without_extension && echo "✓ System prompt works without extension"

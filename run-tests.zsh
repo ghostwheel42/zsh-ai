@@ -20,73 +20,72 @@ FAILED_FILES=()
 run_test_file() {
     local test_file="$1"
     echo -e "${YELLOW}Running ${test_file}...${NC}"
-    
-    # Run test and capture output
-    local output
-    local exit_code
-    
-    output=$(zsh "$test_file" 2>&1)
-    exit_code=$?
-    
-    # Display output
-    echo "$output"
-    
-    # Count test results from output
-    local passed=$(echo "$output" | grep -c "✓")
-    local failed=$(echo "$output" | grep -c "✗")
-    
+
+    # Run test, display output and count test results
+    local exit_code=0 line passed failed
+    while read -r line; do
+        [[ ${line} =~ ^EXIT_CODE= ]] && exit_code="${line#*=}" && continue
+        [[ ${line} == *✓* ]] && : $((passed++)) && line="${GREEN}✓${NC}${line:1}"
+        [[ ${line} == *✗* ]] && : $((failed++)) && line="${RED}${line}${NC}"
+        [[ ${line} =~ ^Running ]] && line="${YELLOW}${line}${NC}"
+        print "  ${line}"
+    done < <(zsh "${test_file}" 2>&1 || echo EXIT_CODE=$?)
+
     # Update totals
-    if [[ $passed -gt 0 || $failed -gt 0 ]]; then
-        TOTAL_TESTS=$((TOTAL_TESTS + passed + failed))
-        TOTAL_PASSED=$((TOTAL_PASSED + passed))
-        TOTAL_FAILED=$((TOTAL_FAILED + failed))
-    fi
-    
+    TOTAL_TESTS=$((TOTAL_TESTS + passed + failed))
+    TOTAL_PASSED=$((TOTAL_PASSED + passed))
+    TOTAL_FAILED=$((TOTAL_FAILED + failed))
+
     # Track failed files
-    if [[ $exit_code -ne 0 || $failed -gt 0 ]]; then
-        FAILED_FILES+=("$test_file")
+    if [[ ${exit_code} -ne 0 || ${failed} -gt 0 ]]; then
+        FAILED_FILES+=("${test_file}")
     fi
-    
+
     echo ""
 }
 
 # Main function
 main() {
     local test_dir="${1:-tests}"
-    
-    echo -e "${BLUE}Running zsh-ai tests...${NC}"
-    echo ""
-    
-    # Find all test files
-    local test_files=($test_dir/**/*.test.zsh(N))
-    
-    if [[ ${#test_files} -eq 0 ]]; then
-        echo -e "${YELLOW}No test files found in $test_dir${NC}"
+
+    if ! command -v jq &>/dev/null; then
+        echo -e "${RED}Tests need jq to run!${NC}"
         exit 1
     fi
-    
+
+    echo -e "${BLUE}Running zsh-ai tests...${NC}"
+    echo ""
+
+    # Find all test files
+    local test_files=(${test_dir}/**/*.test.zsh(N))
+
+    if [[ ${#test_files} -eq 0 ]]; then
+        echo -e "${YELLOW}No test files found in ${test_dir}${NC}"
+        exit 1
+    fi
+
     # Run each test file
-    for test_file in $test_files; do
-        run_test_file "$test_file"
+    for test_file in ${test_files}; do
+        run_test_file "${test_file}"
     done
-    
+
     # Summary
     echo "================================"
     echo -e "${BLUE}Test Summary:${NC}"
-    echo -e "  Total Tests: $TOTAL_TESTS"
-    echo -e "  ${GREEN}Passed: $TOTAL_PASSED${NC}"
-    echo -e "  ${RED}Failed: $TOTAL_FAILED${NC}"
-    
+    echo -e "  ${YELLOW}Total Tests: ${TOTAL_TESTS}${NC}"
+    echo -e "  ${GREEN}Passed: ${TOTAL_PASSED}${NC}"
+    echo -e "  ${RED}Failed: ${TOTAL_FAILED}${NC}"
+
     if [[ ${#FAILED_FILES} -gt 0 ]]; then
         echo -e "\n${RED}Failed test files:${NC}"
-        for file in $FAILED_FILES; do
-            echo "  - $file"
+        for file in ${FAILED_FILES}; do
+            echo "  - ${file}"
         done
     fi
     echo "================================"
-    
+
     # Exit based on results
-    if [[ $TOTAL_FAILED -gt 0 ]]; then
+    if [[ ${TOTAL_FAILED} -gt 0 ]]; then
         exit 1
     else
         exit 0

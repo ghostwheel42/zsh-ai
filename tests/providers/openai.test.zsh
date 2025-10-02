@@ -6,6 +6,7 @@
 source "${0:A:h}/../test_helper.zsh"
 source "${PLUGIN_DIR}/lib/config.zsh"
 source "${PLUGIN_DIR}/lib/context.zsh"
+source "$PLUGIN_DIR/lib/providers/generic.zsh"
 source "${PLUGIN_DIR}/lib/providers/openai.zsh"
 source "${PLUGIN_DIR}/lib/utils.zsh"
 
@@ -33,7 +34,7 @@ EOF
 test_openai_query_success() {
     export OPENAI_API_KEY="test-key"
     export ZSH_AI_OPENAI_MODEL="gpt-4o"
-    
+
     local result=$(_zsh_ai_query_openai "list files")
     assert_equals "ls -la" "$result"
 }
@@ -41,7 +42,7 @@ test_openai_query_success() {
 test_openai_query_error_response() {
     export OPENAI_API_KEY="test-key"
     export ZSH_AI_OPENAI_MODEL="gpt-4o"
-    
+
     # Override curl to return an error
     curl() {
         if [[ "$*" == *"https://api.openai.com/v1/chat/completions"* ]]; then
@@ -56,7 +57,7 @@ EOF
         fi
         command curl "$@"
     }
-    
+
     local result=$(_zsh_ai_query_openai "list files")
     assert_contains "$result" "API Error:"
 }
@@ -64,7 +65,7 @@ EOF
 test_openai_json_escaping() {
     export OPENAI_API_KEY="test-key"
     export ZSH_AI_OPENAI_MODEL="gpt-4o"
-    
+
     # Test with special characters
     local result=$(_zsh_ai_query_openai "test \"quotes\" and \$variables")
     # Should not fail due to JSON escaping issues
@@ -74,7 +75,7 @@ test_openai_json_escaping() {
 test_handles_response_with_newline() {
     export OPENAI_API_KEY="test-key"
     export ZSH_AI_OPENAI_MODEL="gpt-4o"
-    
+
     # Override curl to return response with newline
     curl() {
         if [[ "$*" == *"https://api.openai.com/v1/chat/completions"* ]]; then
@@ -93,7 +94,7 @@ EOF
         fi
         command curl "$@"
     }
-    
+
     local result=$(_zsh_ai_query_openai "go home")
     assert_equals "cd /home" "$result"
 }
@@ -101,7 +102,7 @@ EOF
 test_handles_response_without_jq() {
     export OPENAI_API_KEY="test-key"
     export ZSH_AI_OPENAI_MODEL="gpt-4o"
-    
+
     # Mock jq as unavailable
     command() {
         if [[ "$1" == "-v" && "$2" == "jq" ]]; then
@@ -109,7 +110,7 @@ test_handles_response_without_jq() {
         fi
         builtin command "$@"
     }
-    
+
     # Override curl for consistent response
     curl() {
         if [[ "$*" == *"https://api.openai.com/v1/chat/completions"* ]]; then
@@ -118,7 +119,7 @@ test_handles_response_without_jq() {
         fi
         builtin command curl "$@"
     }
-    
+
     local result=$(_zsh_ai_query_openai "echo test")
     assert_equals "echo test" "$result"
 }

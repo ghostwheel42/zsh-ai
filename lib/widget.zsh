@@ -4,72 +4,61 @@
 
 # Custom widget to intercept Enter key
 _zsh_ai_accept_line() {
-    # Check if the line starts with "# " and handle multiline input
-    if [[ "$BUFFER" =~ ^'# ' ]]; then
-        # Check if buffer contains newlines (multiline command)
-        if [[ "$BUFFER" == *$'\n'* ]]; then
-            # Multiline command detected - execute normally without AI processing
-            zle .accept-line
-            return
-        fi
-        
-        # Extract the query (remove the "# " prefix)
-        local query="${BUFFER:2}"
-        
-        # Add a loading indicator with animation
-        local saved_buffer="$BUFFER"
-        
-        # Animation frames - rotating dots
-        local dots=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
-        
-        local frame=0
-        
-        # Create a temp file for the response
-        local tmpfile=$(mktemp)
-        
-        # Disable job control notifications
-        setopt local_options no_monitor no_notify
-        
-        # Start the API query in background using the shared function
-        # Only redirect stdout to tmpfile, let stderr go to /dev/null to avoid mixing error output
-        (_zsh_ai_execute_command "$query" > "$tmpfile" 2>/dev/null) &
-        local pid=$!
-        
-        # Animate while waiting
-        while kill -0 $pid 2>/dev/null; do
-            BUFFER="$saved_buffer ${dots[$((frame % ${#dots[@]}))]}"
-            zle redisplay
-            ((frame++))
-            # Use zsh's built-in sleep equivalent
-            zle -R && sleep 0.1
-        done
-        
-        # Get the response
-        local cmd=$(cat "$tmpfile")
-        local exit_code=$?
-        rm -f "$tmpfile"
-        
-        if [[ -n "$cmd" ]] && [[ "$cmd" != "Error:"* ]] && [[ "$cmd" != "API Error:"* ]]; then
-            # Simply replace the buffer with the generated command
-            BUFFER="$cmd"
-            
-            # Move cursor to end of line
-            CURSOR=$#BUFFER
-        else
-            # Show error
-            print -P "%F{red}❌ Failed to generate command%f"
-            if [[ -n "$cmd" ]]; then
-                print -P "%F{red}$cmd%f"
-            fi
-            BUFFER=""
-        fi
-        
-        # Redraw the prompt
-        zle reset-prompt
-    else
-        # Normal command - execute as usual
+    # Execute normally if line does not start with "# " or contains newline
+    [[ ! "${BUFFER}" =~ ^"#${ZSH_AI_GUARD} " || "${BUFFER}" == *$'\n'* ]] && {
         zle .accept-line
+        return
+    }
+
+    # Extract the query (remove the "# " prefix)
+    local query="${BUFFER:$((${#ZSH_AI_GUARD}+2))}"
+
+    # Add a loading indicator with animation
+    local saved_buffer="${BUFFER}"
+
+    # Animation frames - rotating dots
+    local dots="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    local frame=0
+
+    # Disable job control notifications
+    setopt local_options no_monitor no_notify
+
+    # Start the API query in background using the shared function
+    # Only redirect stdout, let stderr go to /dev/null to avoid mixing error output
+    coproc _zsh_ai_query "${query}"
+    local pid=$!
+
+    # Animate spinner while reading response
+    local output=()
+    while kill -0 ${pid} 2>/dev/null; do
+        if read -rpt 0.1 line; then
+            output+=("${line}")
+            sleep 0.1
+        fi
+        BUFFER="${saved_buffer} ${dots[$((frame++ % ${#dots} + 1))]}"
+        zle redisplay
+        zle -R
+    done
+    while read -rpt 0.1 line; do
+        output+=("${line}")
+    done
+
+    # Handle response according to exit code
+    local cmd="${${${(F)output}##[[:space:]]}%%[[:space:]]}"
+    if wait ${pid} && [[ -n "${cmd}" ]]; then
+        # Replace the buffer with the generated command
+        BUFFER="${cmd}"
+        # And move cursor to end of line
+        CURSOR=${#BUFFER}
+    else
+        # Show error and clear buffer
+        print -P " %F{red}❌ Failed to generate command%f"
+        [[ -n "${cmd}" ]] && print -P "%F{red}${cmd}%f"
+        BUFFER=""
     fi
+
+    # Redraw the prompt
+    zle reset-prompt
 }
 
 # Create the widget and bind it
