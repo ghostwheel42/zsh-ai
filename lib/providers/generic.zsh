@@ -40,6 +40,7 @@ _zsh_ai_query_generic() {
             print "API Error: ${error}"
         elif command -v jq &>/dev/null; then
             print "Error: Unable to parse response."
+            [[ -z "${ZSH_AI_DEBUG}" ]] || >&2 jq <<<"${response}"
         else
             print "Unable to parse response (install jq for better reliability)"
         fi
