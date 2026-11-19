@@ -27,7 +27,7 @@ _zsh_ai_query_openai() {
                     "content": "\($query)"
                 }
             ],
-            "max_tokens": 256,
+            "max_tokens": 2048,
             "temperature": 0.3
         }' \
         "${ZSH_AI_OPENAI_URL}/v1/chat/completions" \
